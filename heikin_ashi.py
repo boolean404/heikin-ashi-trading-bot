@@ -18,8 +18,8 @@ exchange = ccxt.binance({
 
 # input data for trading
 name = 'Heikin Ashi'
-symbol = 'BTCUSDT'
-timeframe = '5m'
+symbol = 'SUIUSDT'
+timeframe = '15m'
 usdt_amount = 110
 leverage = 20
 
@@ -129,17 +129,31 @@ def check_buy_sell_orders(df):
 
         # get long position
         if position_side == 'LONG' and position_amount != 0:
-            in_long_position = True
-
-            print(f"\n=> {position_side} position is running since {position_running_time}")
-            print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+            # if bear candle occur close long position
+            if df['ha_open'][previous_row_index] > df['ha_close'][previous_row_index]:
+                close_long_position = exchange.create_market_sell_order(symbol=position_symbol, amount=abs(position_amount), params={'positionSide': position_side})
+                in_long_position = False
+                time.sleep(1)
+                print(f"=> Closed {position_side} position..........")
+                # print(close_long_position)
+            else:
+                print(f"\n=> {position_side} position is running since {position_running_time}")
+                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+                in_long_position = True
 
         # get short position
         if position_side == 'SHORT' and position_amount != 0:
-            in_short_position = True
-
-            print(f"\n=> {position_side} position is running since {position_running_time}")
-            print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+            # if bull candle occur close short position
+            if df['ha_open'][previous_row_index] < df['ha_close'][previous_row_index]:
+                close_short_position = exchange.create_market_buy_order(symbol=position_symbol, amount=abs(position_amount), params={'positionSide': position_side})
+                in_short_position = False
+                time.sleep(1)
+                print(f"=> Closed {position_side} position..........")
+                # print(close_short_position)
+            else:
+                print(f"\n=> {position_side} position is running since {position_running_time}")
+                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+                in_short_position = True
 
     if not in_long_position and not in_short_position:
         print("\n=> There is no LONG or SHORT position!")
@@ -151,26 +165,7 @@ def check_buy_sell_orders(df):
     # long position
     if not in_long_position:
         if df['entry_con'][previous_row_index]:
-            print(f"=> [1-3] BULL Candle is occured at {df['timestamp'][previous_row_index]}..........")
-
-            if not in_short_position:
-                print("=> [2-3] No SHORT position to close..........")
-            if in_short_position:
-                # get open position 
-                open_positions = get_open_positions()
-                # print(open_positions)
-
-                for position in open_positions:
-                    position_symbol = position['symbol']
-                    position_side = position['positionSide']
-                    position_amount = float(position['positionAmt'])
-
-                    if position_side == 'SHORT' and position_amount != 0:
-                        close_short_position = exchange.create_market_buy_order(symbol=position_symbol, amount=abs(position_amount), params={'positionSide': position_side})
-                        in_short_position = False
-                        time.sleep(1)
-                        print(f"=> [2-3] Closed {position_side} position..........")
-                        print(close_short_position)
+            print(f"=> [1-3] LONG condition is occured at {df['timestamp'][previous_row_index]}..........")
 
             if account_balance > 1:
                 buy_order = exchange.create_market_buy_order(symbol=symbol, amount=amount, params={'positionSide': 'LONG'})
@@ -178,40 +173,21 @@ def check_buy_sell_orders(df):
                 time.sleep(1)
                 print(f"=> [3-3] Market BUY ordered {buy_order['info']['symbol']} | {float(buy_order['amount']) * float(buy_order['price'])} USDT at {buy_order['price']}")
                 # print(buy_order)
-            if account_balance < 1:
+            else:
                 print("=>[Error] Not enough balance for LONG position!")
 
     # short position
     if not in_short_position:
         if df['entry_con'][previous_row_index] == False:
-            print(f"=> [1-3] BEAR Candle is occured at {df['timestamp'][previous_row_index]}..........")
-
-            if not in_long_position:
-                print("=> [2-3] No LONG position to close..........")
-            if in_long_position:
-                # get open position 
-                open_positions = get_open_positions()
-                # print(open_positions)
-
-                for position in open_positions:
-                    position_symbol = position['symbol']
-                    position_side = position['positionSide']
-                    position_amount = float(position['positionAmt'])
-
-                    if position_side == 'LONG' and position_amount != 0:
-                        close_long_position = exchange.create_market_sell_order(symbol=position_symbol, amount=abs(position_amount), params={'positionSide': position_side})
-                        in_long_position = False
-                        time.sleep(1)
-                        print(f"=> [2-3] Closed {position_side} position..........")
-                        print(close_long_position)
+            print(f"=> [1-2] SHORT condition is occured at {df['timestamp'][previous_row_index]}..........")
 
             if account_balance > 1:
-                buy_order = exchange.create_market_buy_order(symbol=symbol, amount=amount, params={'positionSide': 'LONG'})
-                in_long_position = True
+                sell_order = exchange.create_market_sell_order(symbol=symbol, amount=amount, params={'positionSide': 'LONG'})
+                in_short_position = True
                 time.sleep(1)
-                print(f"=> [3-3] Market BUY ordered {buy_order['info']['symbol']} | {float(buy_order['amount']) * float(buy_order['price'])} USDT at {buy_order['price']}")
-                # print(buy_order)
-            if account_balance < 1:
+                print(f"=> [2-2] Market SELL ordered {sell_order['info']['symbol']} | {abs(float(sell_order['amount']) * float(sell_order['price']))} USDT at {sell_order['price']}")
+                # print(sell_order)
+            else:
                 print("=> [Error] Not enough balance for SHORT position!")
 
 # end check buy sell orders
