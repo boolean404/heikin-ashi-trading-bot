@@ -6,6 +6,9 @@ import schedule
 import secret
 import ccxt
 
+import warnings
+warnings.filterwarnings('ignore')
+
 # for binance exchange
 exchange = ccxt.binance({
     "apiKey": secret.BINANCE_API_KEY,
@@ -18,9 +21,9 @@ exchange = ccxt.binance({
 
 # input data for trading
 name = 'Heikin Ashi'
-symbol = 'SUIUSDT'
+symbol = 'GALAUSDT'
 timeframe = '15m'
-usdt_amount = 110
+usdt_amount = 20
 leverage = 20
 
 # global variables
@@ -56,8 +59,8 @@ def adjust_leverage():
 # start check entry condition
 def check_entry_con(df):
     entry_con = None
-    long_con = df['prev_open2'] > df['prev_close2'] and df['prev_open1'] < df['prev_close1'] and df['ha_open'] < df['ha_close']
-    short_con = df['prev_open2'] < df['prev_close2'] and df['prev_open1'] > df['prev_close1'] and df['ha_open'] > df['ha_close']
+    long_con = df['prev_open2'] > df['prev_close2'] and df['prev_open1'] > df['prev_close1'] and df['ha_open'] < df['ha_close']
+    short_con = df['prev_open2'] < df['prev_close2'] and df['prev_open1'] < df['prev_close1'] and df['ha_open'] > df['ha_close']
     if long_con:
         entry_con = True
     if short_con:
@@ -68,7 +71,12 @@ def check_entry_con(df):
 def get_data_frame(df):
     # heikin ashi candle
     df['ha_close'] = (df['open'] + df['high'] + df['low'] + df['close']) / 4
-    df['ha_open'] = (df['open'].shift(1) + df['close'].shift(1)) / 2
+
+    df['ha_open'] = df['open']
+    for i in range(1, len(df)):
+        df['ha_open'][i] = (df['ha_open'][i-1] + df['ha_close'][i-1]) / 2
+    # df['ha_open'] = (df['ha_open'].shift(1) + df['ha_close'].shift(1)) / 2
+        
     df['ha_high'] = df[['high', 'ha_open', 'ha_close']].max(axis=1)
     df['ha_low'] = df[['low', 'ha_open', 'ha_close']].min(axis=1)
 
@@ -80,7 +88,6 @@ def get_data_frame(df):
     df['prev_high'] = df['ha_high'].shift(1)
 
     df['entry_con'] = df.apply(check_entry_con, axis=1)
-    df['total_margin'] = f'{get_balance()} usdt'
 
 # Fetch open positions
 def get_open_positions():
@@ -105,7 +112,7 @@ def check_buy_sell_orders(df):
     previous_row_index = last_row_index - 1
 
     # Drop the unnecessary columns
-    ha_df = df[['timestamp', 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'volume', 'entry_con', 'total_margin']]
+    ha_df = df[['timestamp', 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'volume', 'entry_con']]
     print(ha_df.tail(5))
 
     # get open position 
@@ -120,7 +127,7 @@ def check_buy_sell_orders(df):
         position_mark_price = float(position['markPrice'])
         position_amount = float(position['positionAmt'])
         position_pnl = round(float(position['unRealizedProfit']), 2)
-        position_liquidation_price = round(float(position['liquidationPrice']), 2)
+        position_liquidation_price = float(position['liquidationPrice'])
         position_amount_usdt =  round((position_amount * position_entry_price), 2)
         position_update_time = float(position['updateTime']) / 1000.0
         
@@ -138,7 +145,7 @@ def check_buy_sell_orders(df):
                 # print(close_long_position)
             else:
                 print(f"\n=> {position_side} position is running since {position_running_time}")
-                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {position_mark_price} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
                 in_long_position = True
 
         # get short position
@@ -152,7 +159,7 @@ def check_buy_sell_orders(df):
                 # print(close_short_position)
             else:
                 print(f"\n=> {position_side} position is running since {position_running_time}")
-                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {round(position_mark_price, 2)} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
+                print(f"=> {position_symbol} | {position_leverage}x | {position_side} | {position_amount_usdt} USDT | Entry: {position_entry_price} | Mark: {position_mark_price} | Liquidation: {position_liquidation_price} | PNL: {position_pnl} USDT")
                 in_short_position = True
 
     if not in_long_position and not in_short_position:
@@ -201,7 +208,7 @@ def run_bot():
         print("#######################################################################################################################")
         print(f"Fetching new bars for {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
-        bars = exchange.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=21)
+        bars = exchange.fetch_ohlcv(symbol=symbol, timeframe=timeframe, limit=51)
         df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms').dt.tz_localize('UTC')
